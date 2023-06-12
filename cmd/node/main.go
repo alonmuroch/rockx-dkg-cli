@@ -65,6 +65,8 @@ func main() {
 	config := &node.Config{
 		SSVOperator: thisOperator,
 		Storage:     storage,
+
+		Logger: log,
 	}
 
 	dkgnode := node.NewController(config) //dkg.NewNode(thisOperator, config)
