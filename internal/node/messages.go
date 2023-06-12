@@ -17,6 +17,7 @@ type TransportType uint64
 
 const (
 	InitMessageType TransportType = iota
+	InitReshareMessageType
 	ExchangeMessageType
 	OutputMessageType
 )

@@ -138,7 +138,7 @@ func (cl *Client) stream(urlparam string, requestID string, data []byte) error {
 	return nil
 }
 
-func (cl *Client) CreateTopic(requestID string, l []types.OperatorID) error {
+func (cl *Client) CreateTopic(requestID string, l []uint64) error {
 	topic := TopicJSON{
 		TopicName:   requestID,
 		Subscribers: make([]string, 0),

@@ -12,7 +12,6 @@ import (
 
 	"github.com/RockX-SG/frost-dkg-demo/internal/logger"
 	"github.com/RockX-SG/frost-dkg-demo/internal/messenger"
-	"github.com/bloxapp/ssv-spec/dkg"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 )
@@ -75,8 +74,8 @@ func (h *CliHandler) DKGResultByRequestID(requestID string) (*DKGResult, error) 
 	return formatResults(data), nil
 }
 
-func getRandRequestID() dkg.RequestID {
-	requestID := dkg.RequestID{}
+func getRandRequestID() [24]byte {
+	requestID := [24]byte{}
 	for i := range requestID {
 		rndInt, _ := rand.Int(rand.Reader, big.NewInt(255))
 		if len(rndInt.Bytes()) == 0 {

@@ -4,6 +4,7 @@ import "github.com/bloxapp/ssv-spec/dkg"
 
 type Config struct {
 	SSVOperator *dkg.Operator
+	Storage     dkg.Storage
 }
 
 type Controller struct {

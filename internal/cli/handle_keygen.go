@@ -4,14 +4,14 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"github.com/RockX-SG/frost-dkg-demo/internal/node"
+	"github.com/pkg/errors"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/RockX-SG/frost-dkg-demo/internal/messenger"
-	"github.com/bloxapp/ssv-spec/dkg"
 	"github.com/bloxapp/ssv-spec/types"
-	"github.com/bloxapp/ssv-spec/types/testingutils"
 	"github.com/urfave/cli/v2"
 )
 
@@ -45,7 +45,7 @@ func (h *CliHandler) HandleKeygen(c *cli.Context) error {
 	return nil
 }
 
-func (h *CliHandler) sendInitMsg(operatorID types.OperatorID, addr string, data []byte) error {
+func (h *CliHandler) sendInitMsg(operatorID uint64, addr string, data []byte) error {
 	url := fmt.Sprintf("%s/consume", addr)
 	resp, err := h.client.Post(url, "application/json", bytes.NewBuffer(data))
 	if err != nil {
@@ -59,14 +59,14 @@ func (h *CliHandler) sendInitMsg(operatorID types.OperatorID, addr string, data 
 }
 
 type KeygenRequest struct {
-	Operators            map[types.OperatorID]string `json:"operators"`
-	Threshold            int                         `json:"threshold"`
-	WithdrawalCredential string                      `json:"withdrawal_credentials"`
-	ForkVersion          string                      `json:"fork_version"`
+	Operators            map[uint64]string `json:"operators"`
+	Threshold            uint64            `json:"threshold"`
+	WithdrawalCredential string            `json:"withdrawal_credentials"`
+	ForkVersion          string            `json:"fork_version"`
 }
 
-func (request *KeygenRequest) allOperators() []types.OperatorID {
-	operators := []types.OperatorID{}
+func (request *KeygenRequest) allOperators() []uint64 {
+	operators := []uint64{}
 	for operatorID := range request.Operators {
 		operators = append(operators, operatorID)
 	}
@@ -74,8 +74,8 @@ func (request *KeygenRequest) allOperators() []types.OperatorID {
 }
 
 func (request *KeygenRequest) parseKeygenRequest(c *cli.Context) error {
-	request.Operators = make(map[types.OperatorID]string)
-	request.Threshold = c.Int("threshold")
+	request.Operators = make(map[uint64]string)
+	request.Threshold = c.Uint64("threshold")
 	request.WithdrawalCredential = c.String("withdrawal-credentials")
 	request.ForkVersion = c.String("fork-version")
 
@@ -90,35 +90,58 @@ func (request *KeygenRequest) parseKeygenRequest(c *cli.Context) error {
 		if err != nil {
 			return err
 		}
-		request.Operators[types.OperatorID(opID)] = pair[1]
+		request.Operators[uint64(opID)] = pair[1]
 	}
 	return nil
 }
 
-func (request *KeygenRequest) initMsgForKeygen(requestID dkg.RequestID) ([]byte, error) {
+func (request *KeygenRequest) initMsgForKeygen(requestID [24]byte) ([]byte, error) {
 	withdrawalCred, _ := hex.DecodeString(request.WithdrawalCredential)
 	forkVersion := types.NetworkFromString(request.ForkVersion).ForkVersion()
 
-	init := testingutils.InitMessageData(
-		request.allOperators(),
-		uint16(request.Threshold),
-		withdrawalCred,
-		forkVersion,
-	)
-	initBytes, _ := init.Encode()
+	//init := testingutils.InitMessageData(
+	//	request.allOperators(),
+	//	uint16(request.Threshold),
+	//	withdrawalCred,
+	//	forkVersion,
+	//)
+	//initBytes, _ := init.Encode()
+
+	init := &node.Init{
+		Operators:             request.allOperators(),
+		T:                     request.Threshold,
+		WithdrawalCredentials: withdrawalCred,
+		Fork:                  forkVersion,
+	}
+	byts, err := init.MarshalSSZ()
+	if err != nil {
+		return nil, errors.Wrap(err, "could not encode init msg")
+	}
+
+	signedInit := node.SignedTransport{
+		Message: &node.Transport{
+			Type:       node.InitMessageType,
+			Identifier: requestID,
+			Data:       byts,
+		},
+	}
+	//signedByts, err := signedInit.MarshalSSZ()
+	//if err != nil {
+	//	return nil, errors.Wrap(err, "could not encode signed init msg")
+	//}
 
 	// TODO: TBD who signs this init msg
-	ks := testingutils.TestingKeygenKeySet()
-	signedInitMsg := testingutils.SignDKGMsg(ks.DKGOperators[1].SK, 1, &dkg.Message{
-		MsgType:    dkg.InitMsgType,
-		Identifier: requestID,
-		Data:       initBytes,
-	})
-	signedInitMsgBytes, _ := signedInitMsg.Encode()
+	//ks := testingutils.TestingKeygenKeySet()
+	//signedInitMsg := testingutils.SignDKGMsg(ks.DKGOperators[1].SK, 1, &dkg.Message{
+	//	MsgType:    dkg.InitMsgType,
+	//	Identifier: requestID,
+	//	Data:       byts,
+	//})
+	//signedInitMsgBytes, _ := signedInitMsg.Encode()
 
-	msg := &types.SSVMessage{
-		MsgType: types.DKGMsgType,
-		Data:    signedInitMsgBytes,
-	}
-	return msg.Encode()
+	//msg := &types.SSVMessage{
+	//	MsgType: types.DKGMsgType,
+	//	Data:    signedByts,
+	//}
+	return signedInit.MarshalSSZ()
 }
