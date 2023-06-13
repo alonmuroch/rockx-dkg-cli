@@ -1,4 +1,4 @@
-package drand
+package kyber
 
 import (
 	"encoding/hex"

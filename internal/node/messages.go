@@ -36,9 +36,9 @@ type SignedTransport struct {
 }
 
 const (
-	DrandDealBundleMessageType TransportType = iota
-	DrandResponseBundleMessageType
-	DrandJustificationBundleMessageType
+	KyberDealBundleMessageType TransportType = iota
+	KyberResponseBundleMessageType
+	KyberJustificationBundleMessageType
 )
 
 type KyberMessage struct {
