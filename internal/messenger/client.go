@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/RockX-SG/frost-dkg-demo/internal/node"
 	"log"
 	"net/http"
 	"strconv"
@@ -59,20 +60,15 @@ func (cl *Client) StreamDKGOutput(output map[types.OperatorID]*dkg.SignedOutput)
 	return cl.stream("dkgoutput", requestID, data)
 }
 
-func (cl *Client) BroadcastDKGMessage(msg *dkg.SignedMessage) error {
+func (cl *Client) BroadcastDKGMessage(msg *node.SignedTransport) error {
 	requestID := hex.EncodeToString(msg.Message.Identifier[:])
 
-	msgBytes, err := msg.Encode()
+	msgBytes, err := msg.MarshalSSZ()
 	if err != nil {
 		return err
 	}
-	ssvMsg := types.SSVMessage{
-		MsgType: types.DKGMsgType,
-		Data:    msgBytes,
-	}
-	ssvMsgBytes, _ := ssvMsg.Encode()
 
-	return cl.publish(requestID, ssvMsgBytes)
+	return cl.publish(requestID, msgBytes)
 }
 
 func (cl *Client) RegisterOperatorNode(id, addr string) error {

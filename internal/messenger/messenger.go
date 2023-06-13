@@ -6,16 +6,15 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"github.com/RockX-SG/frost-dkg-demo/internal/node"
 	"io"
 	"net/http"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/RockX-SG/frost-dkg-demo/internal/logger"
 	"github.com/RockX-SG/frost-dkg-demo/internal/workers"
 	"github.com/bloxapp/ssv-spec/dkg"
-	"github.com/bloxapp/ssv-spec/dkg/frost"
 	"github.com/bloxapp/ssv-spec/types"
 )
 
@@ -79,34 +78,24 @@ func (m *Messenger) ProcessIncomingMessageWorker(ctx *context.Context) {
 			continue
 		}
 
-		ssvMsg := &types.SSVMessage{}
-		if err := ssvMsg.Decode(msg.Data); err != nil {
+		transportMsg := &node.SignedTransport{}
+		if err := transportMsg.UnmarshalSSZ(msg.Data); err != nil {
 			m.logger.Errorf("ProcessIncomingMessageWorker: %w", err)
-			continue
-		}
-		signedMsg := &dkg.SignedMessage{}
-		if err := signedMsg.Decode(ssvMsg.Data); err != nil {
-			m.logger.Errorf("ProcessIncomingMessageWorker: failed to decode signed message: %w", err)
-			continue
-		}
-		protocolMsg := &frost.ProtocolMsg{}
-		if err := protocolMsg.Decode(signedMsg.Message.Data); err != nil {
-			m.logger.Errorf("ProcessIncomingMessageWorker: failed to decode protocol message: %w", err)
 			continue
 		}
 
 		m.logger.Debugf(
-			"received message from %d for msgType %d round %d",
-			signedMsg.Signer,
-			signedMsg.Message.MsgType,
-			protocolMsg.Round,
+			"received message from %d for msgType %d",
+			transportMsg.Signer,
+			transportMsg.Message.Type,
 		)
 
 		for _, subscriber := range tp.Subscribers {
-			operatorID := strconv.Itoa(int(signedMsg.Signer))
-			if operatorID == subscriber.Name {
-				continue
-			}
+			// commented out so nodes send themselves
+			//operatorID := strconv.Itoa(int(transportMsg.Signer))
+			//if operatorID == subscriber.Name {
+			//	continue
+			//}
 			subscriber.Outgoing <- msg
 		}
 	}

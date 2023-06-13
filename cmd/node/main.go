@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	bls "github.com/drand/kyber-bls12381"
 	"os"
 	"strconv"
 
@@ -37,12 +38,11 @@ func main() {
 	defer db.Close()
 	storage := store.NewStorage(db)
 
-	// TODO: add a check to verify the node operator is a valid node operator
-	//operatorPrivateKey, err := params.loadDecryptedPrivateKey()
-	//if err != nil {
-	//	log.Errorf("Main: failed to load decrypted private key: %w", err)
-	//	panic(err)
-	//}
+	operatorPrivateKey, err := params.loadDecryptedPrivateKey()
+	if err != nil {
+		log.Errorf("Main: failed to load decrypted private key: %w", err)
+		panic(err)
+	}
 	//signer := keymanager.NewKeyManager(types.PrimusTestnet, operatorPrivateKey)
 
 	network := messenger.NewMessengerClient(messenger.MessengerAddrFromEnv())
@@ -63,8 +63,14 @@ func main() {
 	}
 
 	config := &node.Config{
-		SSVOperator: thisOperator,
-		Storage:     storage,
+		SSVOperator: &node.OperatorOwner{
+			Operator:     thisOperator,
+			EncryptionSK: operatorPrivateKey,
+		},
+		Storage: storage,
+		Network: network,
+
+		PairingSuite: bls.NewBLS12381Suite(),
 
 		Logger: log,
 	}

@@ -1,19 +1,45 @@
 package node
 
 import (
+	"crypto/rsa"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/RockX-SG/frost-dkg-demo/internal/logger"
 	"github.com/bloxapp/ssv-spec/dkg"
 	"github.com/bloxapp/ssv-spec/types"
+	"github.com/drand/kyber"
+	"github.com/drand/kyber/pairing"
+	dkg2 "github.com/drand/kyber/share/dkg"
+	"time"
 )
 
+// OperatorOwner represents the owner of an operator
+type OperatorOwner struct {
+	Operator     *dkg.Operator
+	EncryptionSK *rsa.PrivateKey
+}
+
 type Config struct {
-	SSVOperator *dkg.Operator
+	SSVOperator *OperatorOwner
 	Storage     dkg.Storage
+	Network     Network
+
+	PairingSuite pairing.Suite
 
 	Logger *logger.Logger
+}
+
+func (config *Config) GetG1Suite() dkg2.Suite {
+	return config.PairingSuite.G1().(dkg2.Suite)
+}
+
+func (config *Config) GetScalar() kyber.Scalar {
+	return config.PairingSuite.G1().Scalar()
+}
+
+func (config *Config) GetPoint() kyber.Point {
+	return config.PairingSuite.G1().Point()
 }
 
 type Controller struct {
@@ -42,19 +68,39 @@ func (c *Controller) Process(msg *SignedTransport) error {
 		}
 
 		i := &Instance{
-			InitMsg:   initMsg,
-			Operators: operators,
+			InitMsg:    initMsg,
+			Identifier: msg.Message.Identifier,
+			Operators:  operators,
+
+			exchangeMessages: map[uint64]*Exchange{},
 
 			config: c.config,
 		}
-		c.Instances[hex.EncodeToString(msg.Message.Identifier[:])] = i
-		i.Start()
+		c.Instances[c.IdString(msg.Message.Identifier)] = i
+		go func() {
+			// sleep to let init message propagate
+			time.Sleep(time.Second)
+			i.Start()
+		}()
 
 		c.config.Logger.Printf("Started DKG instanc with ID: %x", msg.Message.Identifier)
 	default:
-		return errors.New(fmt.Sprintf("unknown message type: %d", msg.Message.Type))
+		i := c.getInstance(msg.Message.Identifier)
+		if i == nil {
+			return errors.New(fmt.Sprintf("instance not found for id: %x", msg.Message.Identifier))
+		}
+
+		return i.Process(msg)
 	}
 	return nil
+}
+
+func (c *Controller) IdString(id [24]byte) string {
+	return hex.EncodeToString(id[:])
+}
+
+func (c *Controller) getInstance(id [24]byte) *Instance {
+	return c.Instances[c.IdString(id)]
 }
 
 func (c *Controller) getOperators(operators []uint64) (map[uint64]*dkg.Operator, error) {

@@ -17,6 +17,7 @@ type TransportType uint64
 
 const (
 	InitMessageType TransportType = iota
+	KyberMessageType
 	InitReshareMessageType
 	ExchangeMessageType
 	OutputMessageType
@@ -34,6 +35,17 @@ type SignedTransport struct {
 	Signature []byte `ssz-max:"2048"`
 }
 
+const (
+	DrandDealBundleMessageType TransportType = iota
+	DrandResponseBundleMessageType
+	DrandJustificationBundleMessageType
+)
+
+type KyberMessage struct {
+	Type TransportType
+	Data []byte `ssz-max:"2048"`
+}
+
 type Init struct {
 	// Operators involved in the DKG
 	Operators []uint64 `ssz-max:"13"`
@@ -43,6 +55,11 @@ type Init struct {
 	WithdrawalCredentials []byte `ssz-max:"256"` // 2^23
 	// Fork ethereum fork for signing
 	Fork [4]byte `ssz-size:"4"`
+}
+
+// Exchange contains the session auth/ encryption key for each node
+type Exchange struct {
+	PK []byte `ssz-max:"2048"`
 }
 
 type Output struct {
