@@ -15,10 +15,14 @@ type Logger struct {
 	*logrus.Logger
 }
 
+func NewSimple() *Logger {
+	return &Logger{logrus.New()}
+}
+
 func New(logFilePath string) *Logger {
 
 	// Create a new Logrus logger instance
-	logger := &Logger{logrus.New()}
+	logger := NewSimple()
 
 	// Set the log level to Info
 	if os.Getenv("DKG_LOG_LEVEL") == "release" {

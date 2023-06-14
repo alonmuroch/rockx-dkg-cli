@@ -2,11 +2,11 @@ package node
 
 import (
 	"encoding/hex"
+	"github.com/bloxapp/ssv-spec/dkg"
 	"io"
 	"net/http"
 
 	"github.com/RockX-SG/frost-dkg-demo/internal/logger"
-	"github.com/bloxapp/ssv-spec/dkg"
 	"github.com/gin-gonic/gin"
 )
 

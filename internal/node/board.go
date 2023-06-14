@@ -30,6 +30,8 @@ func NewBoard(
 }
 
 func (b *Board) PushDeals(bundle *dkg.DealBundle) {
+	b.logger.Infof("pushing deal bundle")
+
 	byts, err := kyber.EncodeDealBundle(bundle)
 	if err != nil {
 		b.logger.Error(err.Error())
@@ -52,6 +54,8 @@ func (b *Board) IncomingDeal() <-chan dkg.DealBundle {
 }
 
 func (b *Board) PushResponses(bundle *dkg.ResponseBundle) {
+	b.logger.Infof("pushing response bundle")
+
 	byts, err := kyber.EncodeResponseBundle(bundle)
 	if err != nil {
 		b.logger.Error(err.Error())
@@ -74,6 +78,8 @@ func (b *Board) IncomingResponse() <-chan dkg.ResponseBundle {
 }
 
 func (b *Board) PushJustifications(bundle *dkg.JustificationBundle) {
+	b.logger.Infof("pushing justification bundle")
+
 	byts, err := kyber.EncodeJustificationBundle(bundle)
 	if err != nil {
 		b.logger.Error(err.Error())

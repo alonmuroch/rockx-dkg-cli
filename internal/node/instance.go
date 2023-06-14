@@ -21,6 +21,8 @@ type Instance struct {
 	board       *Board
 
 	config *Config
+
+	Finished bool
 }
 
 func (i *Instance) Start() error {
@@ -116,8 +118,6 @@ func (i *Instance) processExchangeMsg(msg *SignedTransport) error {
 
 	// all exchange messages received
 	if len(i.exchangeMessages) == len(i.Operators) {
-		i.config.Logger.Infof("All exchange messages received, starting DKG session")
-
 		// new Kyber board
 		i.board = NewBoard(
 			i.config.Logger,
@@ -168,7 +168,7 @@ func (i *Instance) processExchangeMsg(msg *SignedTransport) error {
 
 		}(i.dkgProtocol, i.postDKGSession)
 
-		go i.dkgProtocol.Start()
+		i.config.Logger.Infof("All exchange messages received, starting DKG session")
 	}
 
 	return nil
@@ -184,6 +184,9 @@ func (i *Instance) validateTransportMessage(msg *SignedTransport) error {
 
 func (i *Instance) postDKGSession(res *dkg2.OptionResult) {
 	i.config.Logger.Infof("<<<< ---- Post DKG ---- >>>>")
+	if res.Error != nil {
+		i.config.Logger.Errorf("post DKG error: %s", res.Error.Error())
+	}
 }
 
 func (i *Instance) Broadcast(msg *Transport) error {

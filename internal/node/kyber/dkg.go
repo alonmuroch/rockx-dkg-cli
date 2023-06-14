@@ -2,6 +2,7 @@ package kyber
 
 import (
 	"crypto/rand"
+	"github.com/RockX-SG/frost-dkg-demo/internal/logger"
 	"github.com/drand/kyber"
 	"github.com/drand/kyber/pairing"
 	"github.com/drand/kyber/share/dkg"
@@ -19,6 +20,8 @@ type Config struct {
 	Suite  pairing.Suite
 	T      int
 	Board  dkg.Board
+
+	Logger *logger.Logger
 }
 
 func NewDKGProtocol(config *Config) (*dkg.Protocol, error) {
@@ -27,16 +30,26 @@ func NewDKGProtocol(config *Config) (*dkg.Protocol, error) {
 		Nonce:     GetNonce(),
 		Suite:     config.Suite.G1().(dkg.Suite),
 		NewNodes:  config.Nodes,
+		OldNodes:  config.Nodes, // in new dkg we consider the old nodes the new nodes (taken from kyber)
 		Threshold: config.T,
 		Auth:      bls.NewSchemeOnG2(config.Suite),
 	}
 
-	return dkg.NewProtocol(
+	phaser := dkg.NewTimePhaser(time.Second * 2)
+
+	ret, err := dkg.NewProtocol(
 		dkgConfig,
 		config.Board,
-		dkg.NewTimePhaser(time.Second*2),
+		phaser,
 		false,
 	)
+	if err != nil {
+		return nil, err
+	}
+
+	go phaser.Start()
+
+	return ret, nil
 }
 
 // GetNonce returns a suitable nonce to feed in the DKG config.
