@@ -73,6 +73,7 @@ func (c *Controller) Process(msg *SignedTransport) error {
 			Operators:  operators,
 
 			exchangeMessages: map[uint64]*Exchange{},
+			outputMessages:   map[uint64]*Output{},
 
 			config: c.config,
 		}

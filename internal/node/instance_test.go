@@ -29,6 +29,8 @@ func instanceConfig(owner *OperatorOwner) *Config {
 }
 
 func instanceForID(owner *OperatorOwner) *Instance {
+	types.InitBLS()
+
 	operators := []uint64{538, 539, 540, 541}
 	config := instanceConfig(owner)
 	return &Instance{
@@ -47,6 +49,7 @@ func instanceForID(owner *OperatorOwner) *Instance {
 		},
 
 		exchangeMessages: map[uint64]*Exchange{},
+		outputMessages:   map[uint64]*Output{},
 
 		config: config,
 	}

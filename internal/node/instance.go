@@ -16,6 +16,7 @@ type Instance struct {
 
 	eciesSK          kyber.Scalar
 	exchangeMessages map[uint64]*Exchange
+	outputMessages   map[uint64]*Output
 
 	dkgProtocol *dkg2.Protocol
 	board       *Board
@@ -58,9 +59,31 @@ func (i *Instance) Process(msg *SignedTransport) error {
 		return i.processExchangeMsg(msg)
 	case KyberMessageType:
 		return i.processKyberMsg(msg)
+	case OutputMessageType:
+		return i.processOutputMsg(msg)
 	default:
 		return errors.New("unknown type")
 	}
+}
+
+func (i *Instance) processOutputMsg(msg *SignedTransport) error {
+	exchMsg := &Output{}
+	if err := exchMsg.UnmarshalSSZ(msg.Message.Data); err != nil {
+		return err
+	}
+
+	if i.outputMessages[msg.Signer] != nil {
+		return errors.New("duplicate output msg")
+	}
+	i.outputMessages[msg.Signer] = exchMsg
+
+	i.config.Logger.Infof("received output msg")
+
+	// all exchange messages received
+	if len(i.outputMessages) == len(i.Operators) {
+		i.config.Logger.Infof("output msg quorum")
+	}
+	return nil
 }
 
 func (i *Instance) processKyberMsg(msg *SignedTransport) error {
@@ -198,6 +221,67 @@ func (i *Instance) postDKGSession(res *dkg2.OptionResult) {
 	i.config.Logger.Infof("<<<< ---- Post DKG ---- >>>>")
 	if res.Error != nil {
 		i.config.Logger.Errorf("post DKG error: %s", res.Error.Error())
+		return
+	}
+
+	shareRes := res.Result
+	id := uint64(shareRes.Key.Share.I)
+
+	// verify share ID
+	if id != uint64(i.config.SSVOperator.Operator.OperatorID) {
+		i.config.Logger.Errorf("dkg id result doesn't match instance ID")
+		return
+	}
+
+	// extract share
+	share, err := ResultToShareSecretKey(shareRes)
+	if err != nil {
+		i.config.Logger.Errorf("could not get share from result: %s", err.Error())
+		return
+	}
+
+	// encrypt share
+	encryptedShare, err := Encrypt(i.config.SSVOperator.Operator.EncryptionPubKey, share.Serialize())
+	if err != nil {
+		i.config.Logger.Errorf("could not encrypt share: %s", err.Error())
+		return
+	}
+
+	// extract validator PK
+	validatorPK, err := ResultsToValidatorPK(shareRes.Key.Commitments(), i.config.GetG1Suite())
+	if err != nil {
+		i.config.Logger.Errorf("could not get validator PK from result: %s", err.Error())
+		return
+	}
+
+	// sign partial deposit data
+	root, _, err := GenerateETHDepositData(
+		validatorPK.Serialize(),
+		i.InitMsg.WithdrawalCredentials,
+		i.InitMsg.Fork,
+	)
+	partialDepositSig := share.SignByte(root)
+
+	// prepare output
+	output := Output{
+		EncryptedShare:              encryptedShare,
+		SharePK:                     share.GetPublicKey().Serialize(),
+		ValidatorPK:                 validatorPK.Serialize(),
+		DepositDataPartialSignature: partialDepositSig.Serialize(),
+	}
+	byts, err := output.MarshalSSZ()
+	if err != nil {
+		i.config.Logger.Errorf("could not marshal output struct: %s", err.Error())
+		return
+	}
+
+	if err := i.Broadcast(&Transport{
+		Type:       OutputMessageType,
+		Identifier: i.Identifier,
+		Data:       byts,
+	}); err != nil {
+		i.config.Logger.Errorf("could not broadcast output msg: %s", err.Error())
+		return
 	}
 }
 
