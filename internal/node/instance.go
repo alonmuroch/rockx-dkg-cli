@@ -1,12 +1,15 @@
 package node
 
 import (
+	"bytes"
 	"errors"
 	kyber2 "github.com/RockX-SG/frost-dkg-demo/internal/node/kyber"
 	"github.com/bloxapp/ssv-spec/dkg"
+	"github.com/bloxapp/ssv-spec/types"
 	"github.com/drand/kyber"
 	dkg2 "github.com/drand/kyber/share/dkg"
 	"github.com/drand/kyber/util/random"
+	"github.com/herumi/bls-eth-go-binary/bls"
 )
 
 type Instance struct {
@@ -23,6 +26,7 @@ type Instance struct {
 
 	config *Config
 
+	Share    *bls.SecretKey
 	Finished bool
 }
 
@@ -82,8 +86,49 @@ func (i *Instance) processOutputMsg(msg *SignedTransport) error {
 	// all exchange messages received
 	if len(i.outputMessages) == len(i.Operators) {
 		i.config.Logger.Infof("output msg quorum")
+
+		// validate validator PK outputs
+		validatorPK := i.outputMessages[uint64(i.config.SSVOperator.Operator.OperatorID)].ValidatorPK
+		for _, m := range i.outputMessages {
+			if !bytes.Equal(validatorPK, m.ValidatorPK) {
+				return errors.New("out validator PK inconsistency")
+			}
+		}
+
+		// get output
+		o, err := i.generateKeyGenOutput()
+		if err != nil {
+			return err
+		}
+
+		// store
+		if err := i.config.Storage.SaveKeyGenOutput(o); err != nil {
+			i.config.Logger.Errorf("could not save output: %s", err.Error())
+		}
+
+		// mark finished
+		i.config.Logger.Infof("FINISHED!")
+		i.Finished = true
 	}
 	return nil
+}
+
+func (i *Instance) generateKeyGenOutput() (*dkg.KeyGenOutput, error) {
+	pubKeys := make(map[types.OperatorID]*bls.PublicKey)
+	for id, msg := range i.outputMessages {
+		pk := &bls.PublicKey{}
+		if err := pk.Deserialize(msg.SharePK); err != nil {
+			return nil, err
+		}
+		pubKeys[types.OperatorID(id)] = pk
+	}
+
+	return &dkg.KeyGenOutput{
+		Share:           i.Share,
+		OperatorPubKeys: pubKeys,
+		ValidatorPK:     i.outputMessages[uint64(i.config.SSVOperator.Operator.OperatorID)].ValidatorPK,
+		Threshold:       i.InitMsg.T,
+	}, nil
 }
 
 func (i *Instance) processKyberMsg(msg *SignedTransport) error {
@@ -239,6 +284,7 @@ func (i *Instance) postDKGSession(res *dkg2.OptionResult) {
 		i.config.Logger.Errorf("could not get share from result: %s", err.Error())
 		return
 	}
+	i.Share = share
 
 	// encrypt share
 	encryptedShare, err := Encrypt(i.config.SSVOperator.Operator.EncryptionPubKey, share.Serialize())

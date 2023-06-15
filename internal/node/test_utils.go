@@ -52,7 +52,7 @@ func (s *testStorage) GetDKGOperator(operatorID types.OperatorID) (bool, *dkg.Op
 }
 
 func (s *testStorage) SaveKeyGenOutput(output *dkg.KeyGenOutput) error {
-	panic("implement")
+	return nil
 }
 
 func (s *testStorage) GetKeyGenOutput(pk types.ValidatorPK) (*dkg.KeyGenOutput, error) {
