@@ -5,12 +5,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/RockX-SG/frost-dkg-demo/internal/logger"
 	"github.com/bloxapp/ssv-spec/dkg"
 	"github.com/bloxapp/ssv-spec/types"
 	"github.com/drand/kyber"
 	"github.com/drand/kyber/pairing"
 	dkg2 "github.com/drand/kyber/share/dkg"
+	"github.com/sirupsen/logrus"
 	"time"
 )
 
@@ -27,7 +27,7 @@ type Config struct {
 
 	PairingSuite pairing.Suite
 
-	Logger *logger.Logger
+	Logger *logrus.Entry
 }
 
 func (config *Config) GetG1Suite() dkg2.Suite {

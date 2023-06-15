@@ -22,7 +22,7 @@ func (h *ApiHandler) HandleConsume(controller *Controller) func(*gin.Context) {
 	return func(c *gin.Context) {
 		data, err := io.ReadAll(c.Request.Body)
 		if err != nil {
-			h.logger.Errorf("HandleConsume: failed to read request body: %w", err)
+			h.logger.Errorf("HandleConsume: failed to read request body: %s", err.Error())
 			c.JSON(http.StatusBadRequest, gin.H{
 				"message": "failed to load data from request body",
 				"error":   err.Error(),
@@ -32,7 +32,7 @@ func (h *ApiHandler) HandleConsume(controller *Controller) func(*gin.Context) {
 
 		msg := &SignedTransport{}
 		if err = msg.UnmarshalSSZ(data); err != nil {
-			h.logger.Errorf("HandleConsume: failed to parse data from request body: %w", err)
+			h.logger.Errorf("HandleConsume: failed to parse data from request body: %s", err.Error())
 			c.JSON(http.StatusBadRequest, gin.H{
 				"message": "failed to parse data from request body",
 				"error":   err.Error(),
@@ -41,7 +41,7 @@ func (h *ApiHandler) HandleConsume(controller *Controller) func(*gin.Context) {
 		}
 
 		if err = controller.Process(msg); err != nil {
-			h.logger.Errorf("HandleConsume: dkg node failed to process incoming message: %w", err)
+			h.logger.Errorf("HandleConsume: dkg node failed to process incoming message: %s", err.Error())
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"message": "dkg node failed to process message",
 				"error":   err.Error(),
@@ -62,7 +62,7 @@ func (h *ApiHandler) HandleGetDKGResults(storage dkg.Storage) func(*gin.Context)
 		vkByte, _ := hex.DecodeString(c.Param("vk"))
 		output, err := storage.GetKeyGenOutput(vkByte)
 		if err != nil {
-			h.logger.Errorf("HandleGetDKGResults: failed to get dkg result for vk %s: %w", c.Param("vk"), err)
+			h.logger.Errorf("HandleGetDKGResults: failed to get dkg result for vk %s: %s", c.Param("vk"), err.Error())
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return
 		}

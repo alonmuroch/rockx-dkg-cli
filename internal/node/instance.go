@@ -119,21 +119,7 @@ func (i *Instance) processExchangeMsg(msg *SignedTransport) error {
 	// all exchange messages received
 	if len(i.exchangeMessages) == len(i.Operators) {
 		// new Kyber board
-		i.board = NewBoard(
-			i.config.Logger,
-			func(msg *KyberMessage) error {
-				byts, err := msg.MarshalSSZ()
-				if err != nil {
-					return err
-				}
-
-				return i.Broadcast(&Transport{
-					Type:       KyberMessageType,
-					Identifier: i.Identifier,
-					Data:       byts,
-				})
-			},
-		)
+		board := i.getKyberBoard()
 
 		// generate nodes
 		nodes := make([]dkg2.Node, 0)
@@ -151,11 +137,14 @@ func (i *Instance) processExchangeMsg(msg *SignedTransport) error {
 
 		// New protocol
 		p, err := kyber2.NewDKGProtocol(&kyber2.Config{
-			Secret: i.eciesSK,
-			Nodes:  nodes,
-			Suite:  i.config.PairingSuite,
-			T:      int(i.InitMsg.T),
-			Board:  i.board,
+			Identifier: i.Identifier[:],
+			Secret:     i.eciesSK,
+			Nodes:      nodes,
+			Suite:      i.config.PairingSuite,
+			T:          int(i.InitMsg.T),
+			Board:      board,
+
+			Logger: i.config.Logger,
 		})
 		if err != nil {
 			return err
@@ -172,6 +161,29 @@ func (i *Instance) processExchangeMsg(msg *SignedTransport) error {
 	}
 
 	return nil
+}
+
+func (i *Instance) getKyberBoard() *Board {
+	if i.board == nil {
+		i.board = NewBoard(
+			i.config.Logger,
+			func(msg *KyberMessage) error {
+				i.config.Logger.Infof("broadcasting kyber message")
+
+				byts, err := msg.MarshalSSZ()
+				if err != nil {
+					return err
+				}
+
+				return i.Broadcast(&Transport{
+					Type:       KyberMessageType,
+					Identifier: i.Identifier,
+					Data:       byts,
+				})
+			},
+		)
+	}
+	return i.board
 }
 
 func (i *Instance) validateTransportMessage(msg *SignedTransport) error {

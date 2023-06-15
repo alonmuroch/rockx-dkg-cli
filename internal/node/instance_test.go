@@ -14,16 +14,41 @@ import (
 
 var testIdentifier = [24]byte{}
 
-func instanceConfig() *Config {
+var network = NewTestNetwork()
+
+func instanceConfig(owner *OperatorOwner) *Config {
 	storage := &testStorage{}
-	network := &testNetwork{}
 
 	return &Config{
-		SSVOperator:  OperatorOwners[0],
+		SSVOperator:  owner,
 		Storage:      storage,
 		Network:      network,
 		PairingSuite: bls.NewBLS12381Suite(),
-		Logger:       logger.NewSimple(),
+		Logger:       logger.NewSimple().WithField("id", owner.Operator.OperatorID),
+	}
+}
+
+func instanceForID(owner *OperatorOwner) *Instance {
+	operators := []uint64{538, 539, 540, 541}
+	config := instanceConfig(owner)
+	return &Instance{
+		InitMsg: &Init{
+			Operators:             operators,
+			T:                     3,
+			WithdrawalCredentials: make([]byte, 30),
+			Fork:                  [4]byte{},
+		},
+		Identifier: testIdentifier,
+		Operators: map[uint64]*dkg.Operator{
+			538: OperatorOwners[0].Operator,
+			539: OperatorOwners[1].Operator,
+			540: OperatorOwners[2].Operator,
+			541: OperatorOwners[3].Operator,
+		},
+
+		exchangeMessages: map[uint64]*Exchange{},
+
+		config: config,
 	}
 }
 
@@ -45,35 +70,23 @@ func signMsg(t *testing.T, id uint64, msg *Transport) *SignedTransport {
 
 func TestInstance_Start(t *testing.T) {
 	operators := []uint64{538, 539, 540, 541}
-	config := instanceConfig()
-	i := &Instance{
-		InitMsg: &Init{
-			Operators:             operators,
-			T:                     3,
-			WithdrawalCredentials: make([]byte, 30),
-			Fork:                  [4]byte{},
-		},
-		Identifier: testIdentifier,
-		Operators: map[uint64]*dkg.Operator{
-			538: OperatorOwners[0].Operator,
-			539: OperatorOwners[1].Operator,
-			540: OperatorOwners[2].Operator,
-			541: OperatorOwners[3].Operator,
-		},
+	instances := []*Instance{
+		instanceForID(OperatorOwners[0]),
+		instanceForID(OperatorOwners[1]),
+		instanceForID(OperatorOwners[2]),
+		instanceForID(OperatorOwners[3]),
+	}
 
-		exchangeMessages: map[uint64]*Exchange{},
-
-		config: config,
+	for _, i := range instances {
+		i.config.Network.(*testNetwork).registerNode(uint64(i.config.SSVOperator.Operator.OperatorID), i.Process)
 	}
 
 	eciesSKs := make(map[uint64]kyber.Scalar)
 	for ii, id := range operators {
-		eciesSKs[id] = i.config.GetScalar().Pick(random.New())
-		if id == 538 {
-			i.eciesSK = eciesSKs[id]
-		}
+		eciesSKs[id] = instances[ii].config.GetScalar().Pick(random.New())
+		instances[ii].eciesSK = eciesSKs[id]
 
-		pk := i.config.GetPoint().Mul(eciesSKs[id], nil)
+		pk := instances[ii].config.GetPoint().Mul(eciesSKs[id], nil)
 		pkByts, err := pk.MarshalBinary()
 		require.NoError(t, err)
 
@@ -89,15 +102,15 @@ func TestInstance_Start(t *testing.T) {
 			Data:       exchByts,
 		})
 
-		config.Logger.Infof("%d", ii)
 		require.NoError(t, VerifyRSA(OperatorOwners[ii].Operator.EncryptionPubKey, signedMsg.Message, signedMsg.Signature))
-
-		require.NoError(t, i.Process(signedMsg))
+		for _, inst := range instances {
+			require.NoError(t, inst.Process(signedMsg))
+		}
 	}
 
 	for {
 		time.Sleep(time.Millisecond * 100)
-		if i.Finished {
+		if instances[0].Finished {
 			return
 		}
 	}

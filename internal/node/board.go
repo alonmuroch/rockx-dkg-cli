@@ -1,14 +1,14 @@
 package node
 
 import (
-	"github.com/RockX-SG/frost-dkg-demo/internal/logger"
 	"github.com/RockX-SG/frost-dkg-demo/internal/node/kyber"
 	"github.com/drand/kyber/share/dkg"
+	"github.com/sirupsen/logrus"
 )
 
 type Board struct {
 	broadcastF func(msg *KyberMessage) error
-	logger     *logger.Logger
+	logger     *logrus.Entry
 
 	DealC          chan dkg.DealBundle
 	ResponseC      chan dkg.ResponseBundle
@@ -16,7 +16,7 @@ type Board struct {
 }
 
 func NewBoard(
-	logger *logger.Logger,
+	logger *logrus.Entry,
 	broadcastF func(msg *KyberMessage) error,
 ) *Board {
 	return &Board{

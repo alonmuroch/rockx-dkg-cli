@@ -60,6 +60,15 @@ func (s *testStorage) GetKeyGenOutput(pk types.ValidatorPK) (*dkg.KeyGenOutput, 
 }
 
 type testNetwork struct {
+	Nodes map[uint64]func(msg *SignedTransport) error
+}
+
+func NewTestNetwork() *testNetwork {
+	return &testNetwork{Nodes: map[uint64]func(msg *SignedTransport) error{}}
+}
+
+func (n *testNetwork) registerNode(id uint64, f func(msg *SignedTransport) error) {
+	n.Nodes[id] = f
 }
 
 // StreamDKGBlame will stream to any subscriber the blame result of the DKG
@@ -74,5 +83,12 @@ func (n *testNetwork) StreamDKGOutput(output map[types.OperatorID]*dkg.SignedOut
 
 // BroadcastDKGMessage will broadcast a msg to the dkg network
 func (n *testNetwork) BroadcastDKGMessage(msg *SignedTransport) error {
+	for _, c := range n.Nodes {
+		go func(msg *SignedTransport, f func(msg *SignedTransport) error) {
+			if err := f(msg); err != nil {
+				panic(err.Error())
+			}
+		}(msg, c)
+	}
 	return nil
 }

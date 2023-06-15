@@ -1,12 +1,12 @@
 package kyber
 
 import (
-	"crypto/rand"
-	"github.com/RockX-SG/frost-dkg-demo/internal/logger"
+	"crypto/sha256"
 	"github.com/drand/kyber"
 	"github.com/drand/kyber/pairing"
 	"github.com/drand/kyber/share/dkg"
 	"github.com/drand/kyber/sign/bls"
+	"github.com/sirupsen/logrus"
 	"time"
 )
 
@@ -14,6 +14,7 @@ import (
 const NonceLength = 32
 
 type Config struct {
+	Identifier []byte
 	// Secret session secret key
 	Secret kyber.Scalar
 	Nodes  []dkg.Node
@@ -21,18 +22,20 @@ type Config struct {
 	T      int
 	Board  dkg.Board
 
-	Logger *logger.Logger
+	Logger *logrus.Entry
 }
 
 func NewDKGProtocol(config *Config) (*dkg.Protocol, error) {
 	dkgConfig := &dkg.Config{
 		Longterm:  config.Secret,
-		Nonce:     GetNonce(),
+		Nonce:     GetNonce(config.Identifier),
 		Suite:     config.Suite.G1().(dkg.Suite),
 		NewNodes:  config.Nodes,
 		OldNodes:  config.Nodes, // in new dkg we consider the old nodes the new nodes (taken from kyber)
 		Threshold: config.T,
 		Auth:      bls.NewSchemeOnG2(config.Suite),
+
+		Log: config.Logger,
 	}
 
 	phaser := dkg.NewTimePhaser(time.Second * 2)
@@ -53,14 +56,7 @@ func NewDKGProtocol(config *Config) (*dkg.Protocol, error) {
 }
 
 // GetNonce returns a suitable nonce to feed in the DKG config.
-func GetNonce() []byte {
-	var nonce [NonceLength]byte
-	n, err := rand.Read(nonce[:])
-	if n != NonceLength {
-		panic("could not read enough random bytes for nonce")
-	}
-	if err != nil {
-		panic(err)
-	}
-	return nonce[:]
+func GetNonce(input []byte) []byte {
+	ret := sha256.Sum256(input)
+	return ret[:]
 }
