@@ -72,7 +72,7 @@ func main() {
 
 		PairingSuite: bls.NewBLS12381Suite(),
 
-		Logger: log,
+		Logger: log.WithField("id", thisOperator.OperatorID),
 	}
 
 	dkgnode := node.NewController(config) //dkg.NewNode(thisOperator, config)
