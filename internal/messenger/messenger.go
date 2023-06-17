@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"github.com/RockX-SG/frost-dkg-demo/internal/node"
 	"io"
@@ -54,6 +55,10 @@ type Message struct {
 }
 
 type DataStore struct {
+	SessionOutputs map[uint64]*node.Output
+	InitMsg        *node.Init
+	SessionID      [24]byte
+
 	DKGOutputs  map[types.OperatorID]*dkg.SignedOutput
 	BlameOutput *dkg.BlameOutput
 }
@@ -89,6 +94,55 @@ func (m *Messenger) ProcessIncomingMessageWorker(ctx *context.Context) {
 			transportMsg.Signer,
 			transportMsg.Message.Type,
 		)
+
+		// start a new session
+		if transportMsg.Message.Type == node.InitMessageType {
+			msgID := hex.EncodeToString(transportMsg.Message.Identifier[:])
+			if m.Data[msgID] != nil {
+				m.logger.Errorf("session ID already exists")
+				continue
+			}
+
+			init := &node.Init{}
+			if err := init.UnmarshalSSZ(transportMsg.Message.Data); err != nil {
+				m.logger.Errorf("could not decoded init data")
+				continue
+			}
+
+			m.Data[msgID] = &DataStore{
+				InitMsg:        init,
+				SessionID:      transportMsg.Message.Identifier,
+				SessionOutputs: map[uint64]*node.Output{},
+			}
+
+			m.logger.Infof("Starting new session %s", msgID)
+		}
+
+		// If output message, store for later
+		if transportMsg.Message.Type == node.OutputMessageType {
+			msgID := hex.EncodeToString(transportMsg.Message.Identifier[:])
+			if m.Data[msgID] == nil {
+				m.logger.Errorf("session ID doesn't exist")
+				continue
+			}
+
+			// TODO verify signer part of session
+
+			output := &node.Output{}
+			if err := output.UnmarshalSSZ(transportMsg.Message.Data); err != nil {
+				m.logger.Errorf("could not decoded output data")
+				continue
+			}
+
+			// TODO - node.VerifyRSA()
+
+			m.Data[msgID].SessionOutputs[transportMsg.Signer] = output
+
+			if len(m.Data[msgID].SessionOutputs) == len(m.Data[msgID].InitMsg.Operators) {
+				// finished
+				m.logger.Infof("Session %s FINISHED!", msgID)
+			}
+		}
 
 		for _, subscriber := range tp.Subscribers {
 			// commented out so nodes send themselves

@@ -34,20 +34,20 @@ func formatResults(data *messenger.DataStore) *DKGResult {
 	}
 
 	output := make(map[types.OperatorID]SignedOutput)
-	for operatorID, signedOutput := range data.DKGOutputs {
+	for operatorID, o := range data.SessionOutputs {
 		getHex := hex.EncodeToString
 		v := SignedOutput{
 			Data: Output{
-				RequestID:            getHex(signedOutput.Data.RequestID[:]),
-				EncryptedShare:       getHex(signedOutput.Data.EncryptedShare),
-				SharePubKey:          getHex(signedOutput.Data.SharePubKey),
-				ValidatorPubKey:      getHex(signedOutput.Data.ValidatorPubKey),
-				DepositDataSignature: getHex(signedOutput.Data.DepositDataSignature),
+				RequestID:            getHex(data.SessionID[:]),
+				EncryptedShare:       getHex(o.EncryptedShare),
+				SharePubKey:          getHex(o.SharePK),
+				ValidatorPubKey:      getHex(o.ValidatorPK),
+				DepositDataSignature: getHex(o.DepositDataPartialSignature),
 			},
-			Signer:    strconv.Itoa(int(signedOutput.Signer)),
-			Signature: hex.EncodeToString(signedOutput.Signature),
+			Signer: strconv.Itoa(int(operatorID)),
+			//Signature: hex.EncodeToString(o.Signature),
 		}
-		output[operatorID] = v
+		output[types.OperatorID(operatorID)] = v
 	}
 
 	return &DKGResult{Output: output}

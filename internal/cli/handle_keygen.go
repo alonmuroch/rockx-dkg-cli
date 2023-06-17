@@ -1,12 +1,10 @@
 package cli
 
 import (
-	"bytes"
 	"encoding/hex"
 	"fmt"
 	"github.com/RockX-SG/frost-dkg-demo/internal/node"
 	"github.com/pkg/errors"
-	"net/http"
 	"strconv"
 	"strings"
 
@@ -30,33 +28,36 @@ func (h *CliHandler) HandleKeygen(c *cli.Context) error {
 		return fmt.Errorf("HandleKeygen: failed to create a new topic on messenger service: %w", err)
 	}
 
-	initMsgBytes, err := keygenRequest.initMsgForKeygen(requestID)
+	initMsg, err := keygenRequest.initMsgForKeygen(requestID)
 	if err != nil {
 		return fmt.Errorf("HandleKeygen: failed to generate init message for keygen: %w", err)
 	}
 
-	for operatorID, nodeAddr := range keygenRequest.Operators {
-		if err := h.sendInitMsg(operatorID, nodeAddr, initMsgBytes); err != nil {
-			return fmt.Errorf("HandleKeygen: failed to send init message to operatorID %d: %w", operatorID, err)
-		}
-	}
+	fmt.Printf("Sending keygen init request for session ID: %s\n", requestIDInHex)
+	return messengerClient.BroadcastDKGMessage(initMsg)
 
-	fmt.Printf("keygen init request sent with ID: %s\n", requestIDInHex)
-	return nil
+	//for operatorID, nodeAddr := range keygenRequest.Operators {
+	//	if err := h.sendInitMsg(operatorID, nodeAddr, initMsgBytes); err != nil {
+	//		return fmt.Errorf("HandleKeygen: failed to send init message to operatorID %d: %w", operatorID, err)
+	//	}
+	//}
+	//
+	//fmt.Printf("keygen init request sent with ID: %s\n", requestIDInHex)
+	//return nil
 }
 
-func (h *CliHandler) sendInitMsg(operatorID uint64, addr string, data []byte) error {
-	url := fmt.Sprintf("%s/consume", addr)
-	resp, err := h.client.Post(url, "application/json", bytes.NewBuffer(data))
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("request to operator %d to consume init message failed with status %s", operatorID, resp.Status)
-	}
-	return nil
-}
+//func (h *CliHandler) sendInitMsg(operatorID uint64, addr string, data []byte) error {
+//	url := fmt.Sprintf("%s/consume", addr)
+//	resp, err := h.client.Post(url, "application/json", bytes.NewBuffer(data))
+//	if err != nil {
+//		return err
+//	}
+//	defer resp.Body.Close()
+//	if resp.StatusCode != http.StatusOK {
+//		return fmt.Errorf("request to operator %d to consume init message failed with status %s", operatorID, resp.Status)
+//	}
+//	return nil
+//}
 
 type KeygenRequest struct {
 	Operators            map[uint64]string `json:"operators"`
@@ -95,7 +96,7 @@ func (request *KeygenRequest) parseKeygenRequest(c *cli.Context) error {
 	return nil
 }
 
-func (request *KeygenRequest) initMsgForKeygen(requestID [24]byte) ([]byte, error) {
+func (request *KeygenRequest) initMsgForKeygen(requestID [24]byte) (*node.SignedTransport, error) {
 	withdrawalCred, _ := hex.DecodeString(request.WithdrawalCredential)
 	forkVersion := types.NetworkFromString(request.ForkVersion).ForkVersion()
 
@@ -118,13 +119,13 @@ func (request *KeygenRequest) initMsgForKeygen(requestID [24]byte) ([]byte, erro
 		return nil, errors.Wrap(err, "could not encode init msg")
 	}
 
-	signedInit := node.SignedTransport{
+	return &node.SignedTransport{
 		Message: &node.Transport{
 			Type:       node.InitMessageType,
 			Identifier: requestID,
 			Data:       byts,
 		},
-	}
+	}, nil
 	//signedByts, err := signedInit.MarshalSSZ()
 	//if err != nil {
 	//	return nil, errors.Wrap(err, "could not encode signed init msg")
@@ -143,5 +144,5 @@ func (request *KeygenRequest) initMsgForKeygen(requestID [24]byte) ([]byte, erro
 	//	MsgType: types.DKGMsgType,
 	//	Data:    signedByts,
 	//}
-	return signedInit.MarshalSSZ()
+	//return signedInit.MarshalSSZ()
 }
