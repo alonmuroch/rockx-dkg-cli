@@ -1,14 +1,14 @@
 package main
 
 import (
-	"crypto/ecdsa"
+	"crypto/rsa"
+	"encoding/base64"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"strconv"
 
 	"github.com/bloxapp/ssv-spec/types"
-	"github.com/ethereum/go-ethereum/accounts/keystore"
 )
 
 type AppParams struct {
@@ -62,14 +62,17 @@ func (params *AppParams) loadKeystorePassword() {
 	params.keystorePassword = os.Getenv("KEYSTORE_PASSWORD")
 }
 
-func (params *AppParams) loadDecryptedPrivateKey() (*ecdsa.PrivateKey, error) {
-	keyJSON, err := ioutil.ReadFile(params.KeystoreFilePath)
+func (params *AppParams) loadDecryptedPrivateKey() (*rsa.PrivateKey, error) {
+	keyByts, err := ioutil.ReadFile(params.KeystoreFilePath)
 	if err != nil {
 		return nil, err
 	}
-	key, err := keystore.DecryptKey(keyJSON, params.keystorePassword)
-	if err != nil {
-		return nil, err
-	}
-	return key.PrivateKey, nil
+	byts, err := base64.StdEncoding.DecodeString(string(keyByts))
+
+	//key, err := keystore.DecryptKey(keyByts, params.keystorePassword)
+	//if err != nil {
+	//	return nil, err
+	//}
+
+	return types.PemToPrivateKey(byts)
 }

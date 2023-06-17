@@ -5,17 +5,17 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
+	"github.com/RockX-SG/frost-dkg-demo/internal/node"
 	"io"
 	"net/http"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/RockX-SG/frost-dkg-demo/internal/logger"
 	"github.com/RockX-SG/frost-dkg-demo/internal/workers"
 	"github.com/bloxapp/ssv-spec/dkg"
-	"github.com/bloxapp/ssv-spec/dkg/frost"
 	"github.com/bloxapp/ssv-spec/types"
 )
 
@@ -55,6 +55,10 @@ type Message struct {
 }
 
 type DataStore struct {
+	SessionOutputs map[uint64]*node.Output
+	InitMsg        *node.Init
+	SessionID      [24]byte
+
 	DKGOutputs  map[types.OperatorID]*dkg.SignedOutput
 	BlameOutput *dkg.BlameOutput
 }
@@ -79,34 +83,73 @@ func (m *Messenger) ProcessIncomingMessageWorker(ctx *context.Context) {
 			continue
 		}
 
-		ssvMsg := &types.SSVMessage{}
-		if err := ssvMsg.Decode(msg.Data); err != nil {
+		transportMsg := &node.SignedTransport{}
+		if err := transportMsg.UnmarshalSSZ(msg.Data); err != nil {
 			m.logger.Errorf("ProcessIncomingMessageWorker: %w", err)
-			continue
-		}
-		signedMsg := &dkg.SignedMessage{}
-		if err := signedMsg.Decode(ssvMsg.Data); err != nil {
-			m.logger.Errorf("ProcessIncomingMessageWorker: failed to decode signed message: %w", err)
-			continue
-		}
-		protocolMsg := &frost.ProtocolMsg{}
-		if err := protocolMsg.Decode(signedMsg.Message.Data); err != nil {
-			m.logger.Errorf("ProcessIncomingMessageWorker: failed to decode protocol message: %w", err)
 			continue
 		}
 
 		m.logger.Debugf(
-			"received message from %d for msgType %d round %d",
-			signedMsg.Signer,
-			signedMsg.Message.MsgType,
-			protocolMsg.Round,
+			"received message from %d for msgType %d",
+			transportMsg.Signer,
+			transportMsg.Message.Type,
 		)
 
-		for _, subscriber := range tp.Subscribers {
-			operatorID := strconv.Itoa(int(signedMsg.Signer))
-			if operatorID == subscriber.Name {
+		// start a new session
+		if transportMsg.Message.Type == node.InitMessageType {
+			msgID := hex.EncodeToString(transportMsg.Message.Identifier[:])
+			if m.Data[msgID] != nil {
+				m.logger.Errorf("session ID already exists")
 				continue
 			}
+
+			init := &node.Init{}
+			if err := init.UnmarshalSSZ(transportMsg.Message.Data); err != nil {
+				m.logger.Errorf("could not decoded init data")
+				continue
+			}
+
+			m.Data[msgID] = &DataStore{
+				InitMsg:        init,
+				SessionID:      transportMsg.Message.Identifier,
+				SessionOutputs: map[uint64]*node.Output{},
+			}
+
+			m.logger.Infof("Starting new session %s", msgID)
+		}
+
+		// If output message, store for later
+		if transportMsg.Message.Type == node.OutputMessageType {
+			msgID := hex.EncodeToString(transportMsg.Message.Identifier[:])
+			if m.Data[msgID] == nil {
+				m.logger.Errorf("session ID doesn't exist")
+				continue
+			}
+
+			// TODO verify signer part of session
+
+			output := &node.Output{}
+			if err := output.UnmarshalSSZ(transportMsg.Message.Data); err != nil {
+				m.logger.Errorf("could not decoded output data")
+				continue
+			}
+
+			// TODO - node.VerifyRSA()
+
+			m.Data[msgID].SessionOutputs[transportMsg.Signer] = output
+
+			if len(m.Data[msgID].SessionOutputs) == len(m.Data[msgID].InitMsg.Operators) {
+				// finished
+				m.logger.Infof("Session %s FINISHED!", msgID)
+			}
+		}
+
+		for _, subscriber := range tp.Subscribers {
+			// commented out so nodes send themselves
+			//operatorID := strconv.Itoa(int(transportMsg.Signer))
+			//if operatorID == subscriber.Name {
+			//	continue
+			//}
 			subscriber.Outgoing <- msg
 		}
 	}

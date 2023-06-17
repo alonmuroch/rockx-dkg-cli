@@ -4,14 +4,13 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"github.com/RockX-SG/frost-dkg-demo/internal/node"
+	"github.com/pkg/errors"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/RockX-SG/frost-dkg-demo/internal/messenger"
-	"github.com/bloxapp/ssv-spec/dkg"
-	"github.com/bloxapp/ssv-spec/types"
-	"github.com/bloxapp/ssv-spec/types/testingutils"
 	"github.com/urfave/cli/v2"
 )
 
@@ -49,7 +48,7 @@ func (h *CliHandler) HandleResharing(c *cli.Context) error {
 	return nil
 }
 
-func (h *CliHandler) sendReshareMsg(operatorID types.OperatorID, addr string, data []byte) error {
+func (h *CliHandler) sendReshareMsg(operatorID uint64, addr string, data []byte) error {
 	url := fmt.Sprintf("%s/consume", addr)
 	resp, err := h.client.Post(url, "application/json", bytes.NewBuffer(data))
 	if err != nil {
@@ -64,15 +63,15 @@ func (h *CliHandler) sendReshareMsg(operatorID types.OperatorID, addr string, da
 }
 
 type ResharingRequest struct {
-	Operators    map[types.OperatorID]string `json:"operators"`
-	Threshold    int                         `json:"threshold"`
-	ValidatorPK  string                      `json:"validator_pk"`
-	OperatorsOld map[types.OperatorID]string `json:"operators_old"`
+	Operators    map[uint64]string `json:"operators"`
+	Threshold    int               `json:"threshold"`
+	ValidatorPK  string            `json:"validator_pk"`
+	OperatorsOld map[uint64]string `json:"operators_old"`
 }
 
 func (request *ResharingRequest) parseResharingRequest(c *cli.Context) error {
-	request.Operators = make(map[types.OperatorID]string)
-	request.OperatorsOld = make(map[types.OperatorID]string)
+	request.Operators = make(map[uint64]string)
+	request.OperatorsOld = make(map[uint64]string)
 	request.Threshold = c.Int("threshold")
 	request.ValidatorPK = c.String("validator-pk")
 
@@ -87,7 +86,7 @@ func (request *ResharingRequest) parseResharingRequest(c *cli.Context) error {
 		if err != nil {
 			return err
 		}
-		request.Operators[types.OperatorID(opID)] = pair[1]
+		request.Operators[uint64(opID)] = pair[1]
 	}
 
 	oldoperatorkv := c.StringSlice("old-operator")
@@ -101,12 +100,12 @@ func (request *ResharingRequest) parseResharingRequest(c *cli.Context) error {
 		if err != nil {
 			return err
 		}
-		request.OperatorsOld[types.OperatorID(opID)] = pair[1]
+		request.OperatorsOld[uint64(opID)] = pair[1]
 	}
 	return nil
 }
 
-func (request *ResharingRequest) nodeAddress(operatorID types.OperatorID) string {
+func (request *ResharingRequest) nodeAddress(operatorID uint64) string {
 	var nodeAddr string
 	_, ok := request.Operators[operatorID]
 	if ok {
@@ -117,47 +116,65 @@ func (request *ResharingRequest) nodeAddress(operatorID types.OperatorID) string
 	return nodeAddr
 }
 
-func (request *ResharingRequest) newOperators() []types.OperatorID {
-	operators := []types.OperatorID{}
+func (request *ResharingRequest) newOperators() []uint64 {
+	operators := []uint64{}
 	for operatorID := range request.Operators {
 		operators = append(operators, operatorID)
 	}
 	return operators
 }
-func (request *ResharingRequest) oldOperators() []types.OperatorID {
-	operatorsOld := []types.OperatorID{}
+func (request *ResharingRequest) oldOperators() []uint64 {
+	operatorsOld := []uint64{}
 	for operatorID := range request.OperatorsOld {
 		operatorsOld = append(operatorsOld, operatorID)
 	}
 	return operatorsOld
 }
 
-func (request *ResharingRequest) initMsgForResharing(requestID dkg.RequestID) ([]byte, error) {
-	vk, err := hex.DecodeString(request.ValidatorPK)
+func (request *ResharingRequest) initMsgForResharing(requestID [24]byte) ([]byte, error) {
+	//vk, err := hex.DecodeString(request.ValidatorPK)
+	//if err != nil {
+	//	return nil, err
+	//}
+
+	init := &node.Init{
+		Operators: request.newOperators(),
+		T:         uint64(request.Threshold),
+	}
+	byts, err := init.MarshalSSZ()
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "could not encode init msg")
 	}
 
-	reshare := testingutils.ReshareMessageData(
-		request.newOperators(),
-		uint16(request.Threshold),
-		vk,
-		request.oldOperators(),
-	)
-	reshareBytes, _ := reshare.Encode()
-
-	// TODO: TBD who signs this init msg
-	ks := testingutils.TestingResharingKeySet()
-	reshareMsg := testingutils.SignDKGMsg(ks.DKGOperators[5].SK, 5, &dkg.Message{
-		MsgType:    dkg.ReshareMsgType,
-		Identifier: requestID,
-		Data:       reshareBytes,
-	})
-	byts, _ := reshareMsg.Encode()
-
-	msg := &types.SSVMessage{
-		MsgType: types.DKGMsgType,
-		Data:    byts,
+	signedInit := node.SignedTransport{
+		Message: &node.Transport{
+			Type:       node.InitReshareMessageType,
+			Identifier: requestID,
+			Data:       byts,
+		},
 	}
-	return msg.Encode()
+	return signedInit.MarshalSSZ()
+
+	//reshare := testingutils.ReshareMessageData(
+	//	request.newOperators(),
+	//	uint16(request.Threshold),
+	//	vk,
+	//	request.oldOperators(),
+	//)
+	//reshareBytes, _ := reshare.Encode()
+	//
+	//// TODO: TBD who signs this init msg
+	//ks := testingutils.TestingResharingKeySet()
+	//reshareMsg := testingutils.SignDKGMsg(ks.DKGOperators[5].SK, 5, &dkg.Message{
+	//	MsgType:    dkg.ReshareMsgType,
+	//	Identifier: requestID,
+	//	Data:       reshareBytes,
+	//})
+	//byts, _ := reshareMsg.Encode()
+	//
+	//msg := &types.SSVMessage{
+	//	MsgType: types.DKGMsgType,
+	//	Data:    byts,
+	//}
+	//return msg.Encode()
 }

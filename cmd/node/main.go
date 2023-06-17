@@ -2,10 +2,10 @@ package main
 
 import (
 	"fmt"
+	bls "github.com/drand/kyber-bls12381"
 	"os"
 	"strconv"
 
-	"github.com/RockX-SG/frost-dkg-demo/internal/keymanager"
 	"github.com/RockX-SG/frost-dkg-demo/internal/logger"
 	"github.com/RockX-SG/frost-dkg-demo/internal/messenger"
 	"github.com/RockX-SG/frost-dkg-demo/internal/node"
@@ -13,7 +13,6 @@ import (
 	store "github.com/RockX-SG/frost-dkg-demo/internal/storage"
 
 	"github.com/bloxapp/ssv-spec/dkg"
-	"github.com/bloxapp/ssv-spec/dkg/frost"
 	"github.com/bloxapp/ssv-spec/types"
 	"github.com/dgraph-io/badger/v3"
 	"github.com/gin-gonic/gin"
@@ -39,31 +38,44 @@ func main() {
 	defer db.Close()
 	storage := store.NewStorage(db)
 
-	// TODO: add a check to verify the node operator is a valid node operator
 	operatorPrivateKey, err := params.loadDecryptedPrivateKey()
 	if err != nil {
 		log.Errorf("Main: failed to load decrypted private key: %w", err)
 		panic(err)
 	}
-	signer := keymanager.NewKeyManager(types.PrimusTestnet, operatorPrivateKey)
+	//signer := keymanager.NewKeyManager(types.PrimusTestnet, operatorPrivateKey)
 
 	network := messenger.NewMessengerClient(messenger.MessengerAddrFromEnv())
 
-	config := &dkg.Config{
-		KeygenProtocol:      frost.New,
-		ReshareProtocol:     frost.NewResharing,
-		Network:             network,
-		Signer:              signer,
-		Storage:             storage,
-		SignatureDomainType: types.PrimusTestnet,
-	}
+	//config := &dkg.Config{
+	//	KeygenProtocol:      frost.New,
+	//	ReshareProtocol:     frost.NewResharing,
+	//	Network:             network,
+	//	Signer:              signer,
+	//	Storage:             storage,
+	//	SignatureDomainType: types.PrimusTestnet,
+	//}
 
 	thisOperator, err := thisOperator(uint32(params.OperatorID), storage)
 	if err != nil {
 		log.Errorf("Main: failed to get operator %d from operator registry: %w", err)
 		panic(err)
 	}
-	dkgnode := dkg.NewNode(thisOperator, config)
+
+	config := &node.Config{
+		SSVOperator: &node.OperatorOwner{
+			Operator:     thisOperator,
+			EncryptionSK: operatorPrivateKey,
+		},
+		Storage: storage,
+		Network: network,
+
+		PairingSuite: bls.NewBLS12381Suite(),
+
+		Logger: log.WithField("id", thisOperator.OperatorID),
+	}
+
+	dkgnode := node.NewController(config) //dkg.NewNode(thisOperator, config)
 
 	// register dkg operator node with the messenger
 	if err := network.RegisterOperatorNode(strconv.Itoa(int(params.OperatorID)), os.Getenv("NODE_BROADCAST_ADDR")); err != nil {
@@ -83,7 +95,7 @@ func main() {
 	r.POST("/consume", h.HandleConsume(dkgnode))
 
 	// get dkg results
-	r.GET("/dkg_results/:vk", h.HandleGetDKGResults(dkgnode))
+	r.GET("/dkg_results/:vk", h.HandleGetDKGResults(storage))
 
 	panic(r.Run(params.HttpAddress))
 }
